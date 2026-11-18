@@ -1,0 +1,45 @@
+Top Down Boss Rush Game 
+1. Rest Area
+2. Boss Arena 
+3. Rest Area 
+4. Boss Area 
+5. Rest Area 
+6. Boss Area 
+7. Victory Area
+
+3 Bosses Back to Back 
+- Each boss has a boss health bar 
+- Each boss has their own AI Type 
+- One is pure melee, other is projectiles, etc 
+
+Rest Area Between Bosses: 
+- Fountain heals some health 
+- Trade one potion for another potion if you want 
+
+Audio/Music: 
+- Intro context music 
+- 3 BGM Tracks for each arena 
+- Damage sound 
+- Attack sound 
+- Use item sound
+- Rest area sound
+- Boss damaged sound 
+- Lose music 
+- Victory music 
+
+Player: 
+- Health Bar 
+- No stamina bar 
+- Attack 
+- Dodge (move across multiple areas at once)
+- Use Item
+- Can hold only one item at a time
+
+Items: 
+- Health Potion
+- Invincibility potion (a few seconds )
+- Damage potion 
+- Increase speed potion 
+- Can only be used once 
+- Only available at rest points 
+
