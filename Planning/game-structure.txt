@@ -43,3 +43,7 @@ Items:
 - Can only be used once 
 - Only available at rest points 
 
+Shader: 
+- When low health, turn area around protaginize pulsing red? 
+- When boss enters half health screen, shake screen?
+
