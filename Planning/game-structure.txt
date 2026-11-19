@@ -16,16 +16,20 @@ Rest Area Between Bosses:
 - Fountain heals some health 
 - Trade one potion for another potion if you want 
 
-Audio/Music: 
+
+Music: 
 - Intro context music 
 - 3 BGM Tracks for each arena 
+- Rest area music 
+- Lose Song 
+- Victory Song 
+
+Audio: 
 - Damage sound 
 - Attack sound 
 - Use item sound
-- Rest area sound
 - Boss damaged sound 
-- Lose music 
-- Victory music 
+
 
 Player: 
 - Health Bar 
