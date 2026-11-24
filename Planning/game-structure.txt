@@ -17,7 +17,7 @@ Rest Area Between Bosses:
 - Trade one potion for another potion if you want 
 
 
-Music: 
+Music (Done): 
 - Intro context music 
 - 3 BGM Tracks for each arena 
 - Rest area music 
@@ -29,6 +29,8 @@ Audio:
 - Attack sound 
 - Use item sound
 - Boss damaged sound 
+- Dodge audio
+- Walking audio 
 
 
 Player: 
@@ -46,8 +48,13 @@ Items:
 - Increase speed potion 
 - Can only be used once 
 - Only available at rest points 
+- No animation, the item is simply used 
 
 Shader: 
-- When low health, turn area around protaginize pulsing red? 
+- When low health, turn area around protagonist pulsing red? 
 - When boss enters half health screen, shake screen?
 
+Gameplay: 
+- When lose, players can retry and restart from the beginning 
+- When you win, you get to replay the game 
+- Play rest area music after killing the boss as well  
