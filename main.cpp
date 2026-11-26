@@ -1,0 +1,222 @@
+/**
+
+* Author: Wasi Genius
+
+* Assignment: Rise of the AI
+
+* Date due: [11/16/2026]
+
+* I pledge that I have completed this assignment without
+
+* collaborating with anyone else, in conformance with the
+
+* NYU School of Engineering Policies and Procedures on
+
+* Academic Misconduct.
+
+**/
+
+#include "CS3113/LevelA.h"
+#include "CS3113/LevelB.h"
+#include "CS3113/LevelC.h"
+#include "CS3113/LoseScene.h"
+#include "CS3113/MenuScene.h"
+#include "CS3113/WinScene.h"
+
+constexpr int SCREEN_WIDTH = 1000,
+              SCREEN_HEIGHT = 600,
+              FPS = 120;
+
+constexpr float FIXED_TIMESTEP = 1.0f / 60.0f;
+
+constexpr Vector2 ORIGIN = {
+    SCREEN_WIDTH / 2.0f,
+    SCREEN_HEIGHT / 2.0f};
+
+AppStatus gAppStatus = RUNNING;
+float gPreviousTicks = 0.0f;
+float gTimeAccumulator = 0.0f;
+Camera2D gCamera = {};
+
+// The scene map owns every scene while this pointer selects the active one
+Scene *gCurrentScene = nullptr;
+std::map<SceneID, Scene *> gLevels;
+
+// Shut down the old scene before loading the new one
+void switchToScene(Scene *scene)
+{
+    if (scene == nullptr)
+    {
+        LOG("Cannot switch to a scene that has not been created.");
+        gAppStatus = TERMINATED;
+        return;
+    }
+
+    if (gCurrentScene != nullptr)
+        gCurrentScene->shutdown();
+
+    gCurrentScene = scene;
+    gCurrentScene->initialise();
+    Entity *player = gCurrentScene->getState().player;
+    gCamera.target = player != nullptr
+                         ? Vector2{player->getPosition().x, ORIGIN.y}
+                         : gCurrentScene->getOrigin();
+}
+
+void initialise()
+{
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Knight's Run");
+    InitAudioDevice();
+    gGameProgress.hurtSound = LoadSound("assets/Misc. Sound/Hurt Sound.mp3");
+
+    // Store each scene under its named ID
+    gLevels[MAIN_MENU] = new MenuScene(ORIGIN, "#1b4998");
+    gLevels[LEVEL_A] = new LevelA(ORIGIN, "#C0897E");
+    gLevels[LEVEL_B] = new LevelB(ORIGIN, "#011627");
+    gLevels[LEVEL_C] = new LevelC(ORIGIN, "#10121F");
+    gLevels[LOSE_SCREEN] = new LoseScene(ORIGIN, "#A00000");
+    gLevels[WIN_SCREEN] = new WinScene(ORIGIN, "#008000");
+    switchToScene(gLevels[MAIN_MENU]);
+
+    // Keep the player centered horizontally in the camera
+    gCamera.offset = ORIGIN;
+    gCamera.rotation = 0.0f;
+    gCamera.zoom = 1.0f;
+    SetTargetFPS(FPS);
+
+    // Start the frame timer after the first scene loads
+    gPreviousTicks = static_cast<float>(GetTime());
+}
+
+void processInput()
+{
+    if (IsKeyPressed(KEY_Q) || WindowShouldClose())
+    {
+        gAppStatus = TERMINATED;
+        return;
+    }
+
+    Entity *player = gCurrentScene->getState().player;
+
+    if (player != nullptr)
+    {
+        // Number keys switch levels without resetting lives
+        SceneID selectedLevel = NO_SCENE;
+        if (IsKeyPressed(KEY_ONE))
+            selectedLevel = LEVEL_A;
+        else if (IsKeyPressed(KEY_TWO))
+            selectedLevel = LEVEL_B;
+        else if (IsKeyPressed(KEY_THREE))
+            selectedLevel = LEVEL_C;
+
+        if (selectedLevel != NO_SCENE)
+        {
+            switchToScene(gLevels[selectedLevel]);
+            return;
+        }
+
+        player->resetMovement();
+
+        if (IsKeyDown(KEY_A))
+            player->moveLeft();
+        else if (IsKeyDown(KEY_D))
+            player->moveRight();
+
+        if (IsKeyPressed(KEY_W) && player->isCollidingBottom())
+        {
+            player->jump();
+            PlaySound(gCurrentScene->getState().jumpSound);
+        }
+
+        // Normalize diagonal input to keep its speed consistent
+        if (GetLength(player->getMovement()) > 1.0f)
+            player->normaliseMovement();
+    }
+    else if (IsKeyPressed(KEY_ENTER))
+    {
+        gGameProgress.lives = 5;
+        gCurrentScene->requestSceneChange(LEVEL_A);
+    }
+}
+
+void update()
+{
+    // Carry leftover time forward so physics uses a fixed update interval
+    const float ticks = static_cast<float>(GetTime());
+    float deltaTime = ticks - gPreviousTicks;
+    gPreviousTicks = ticks;
+    deltaTime += gTimeAccumulator;
+
+    while (deltaTime >= FIXED_TIMESTEP)
+    {
+        gCurrentScene->update(FIXED_TIMESTEP);
+        deltaTime -= FIXED_TIMESTEP;
+
+        Entity *player = gCurrentScene->getState().player;
+        if (player != nullptr)
+        {
+            gCamera.target = {
+                player->getPosition().x,
+                ORIGIN.y};
+        }
+    }
+
+    gTimeAccumulator = deltaTime;
+}
+
+void render()
+{
+    BeginDrawing();
+    BeginMode2D(gCamera);
+    gCurrentScene->render();
+    EndMode2D();
+    EndDrawing();
+}
+
+void shutdown()
+{
+    // Delete each scene through the shared base class
+    for (std::pair<const SceneID, Scene *> &entry : gLevels)
+        delete entry.second;
+    gLevels.clear();
+    gCurrentScene = nullptr;
+
+    UnloadSound(gGameProgress.hurtSound);
+    gGameProgress.hurtSound = {};
+    CloseAudioDevice();
+    CloseWindow();
+}
+
+int main(void)
+{
+    initialise();
+
+    while (gAppStatus == RUNNING)
+    {
+        processInput();
+        update();
+
+        // Handle scene changes after the current update finishes
+        const SceneID nextSceneID = gCurrentScene->getState().nextSceneID;
+        if (nextSceneID != NO_SCENE)
+        {
+            std::map<SceneID, Scene *>::iterator nextScene =
+                gLevels.find(nextSceneID);
+
+            if (nextScene == gLevels.end())
+            {
+                LOG("Cannot switch: the requested scene ID does not exist.");
+                gAppStatus = TERMINATED;
+            }
+            else
+            {
+                switchToScene(nextScene->second);
+            }
+        }
+
+        render();
+    }
+
+    shutdown();
+    return 0;
+}
