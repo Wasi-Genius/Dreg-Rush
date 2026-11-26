@@ -21,8 +21,9 @@ ifeq ($(wildcard CS3113/Map.cpp),CS3113/Map.cpp)
 endif
 
 # Add the scene subclasses used by the lesson.
-ifeq ($(wildcard CS3113/LevelA.cpp),CS3113/LevelA.cpp)
-    SRCS += CS3113/LevelA.cpp
+# Include the Level1 implementation in the executable build
+ifeq ($(wildcard CS3113/Level1.cpp),CS3113/Level1.cpp)
+    SRCS += CS3113/Level1.cpp
 endif
 
 ifeq ($(wildcard CS3113/LevelB.cpp),CS3113/LevelB.cpp)

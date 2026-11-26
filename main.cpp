@@ -17,7 +17,7 @@
 **/
 
 
-#include "CS3113/LevelA.h"
+#include "CS3113/Level1.h"
 #include "CS3113/LoseScene.h"
 #include "CS3113/MenuScene.h"
 #include "CS3113/WinScene.h"
@@ -71,7 +71,8 @@ void initialise()
 
     // Store each scene under its named ID
     gLevels[MAIN_MENU] = new MenuScene(ORIGIN, "#1b4998");
-    gLevels[LEVEL_1] = new LevelA(ORIGIN, "#C0897E");
+    // Create the first boss arena using the shared 1200 by 800 origin
+    gLevels[LEVEL_1] = new Level1(ORIGIN, "#C0897E");
     gLevels[LOSE_SCREEN] = new LoseScene(ORIGIN, "#A00000");
     gLevels[WIN_SCREEN] = new WinScene(ORIGIN, "#008000");
     switchToScene(gLevels[MAIN_MENU]);
@@ -102,6 +103,7 @@ void processInput()
 
         SceneID selectedLevel = NO_SCENE;
         if (IsKeyPressed(KEY_ONE))
+            // Pressing 1 directly selects the Level 1 boss arena
             selectedLevel = LEVEL_1;
        
         if (selectedLevel != NO_SCENE)

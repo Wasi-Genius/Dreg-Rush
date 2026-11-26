@@ -21,6 +21,8 @@ enum SceneID
 {
     NO_SCENE = -1,
     MAIN_MENU,
+    // LEVEL_1 identifies the top-down Teal Rock boss arena
+    LEVEL_1,
     LEVEL_A,
     LEVEL_B,
     LEVEL_C,
