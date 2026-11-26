@@ -128,7 +128,7 @@ void processInput()
     else if (IsKeyPressed(KEY_ENTER))
     {
         gGameProgress.lives = 5;
-        gCurrentScene->requestSceneChange(LEVEL_A);
+        gCurrentScene->requestSceneChange(LEVEL_1);
     }
 }
 
