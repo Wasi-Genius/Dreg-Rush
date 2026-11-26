@@ -2,9 +2,9 @@
 
 * Author: Wasi Genius
 
-* Assignment: Rise of the AI
+* Assignment: Dreg Rush
 
-* Date due: [11/16/2026]
+* Date due: [Your presentation date]
 
 * I pledge that I have completed this assignment without
 
@@ -16,15 +16,14 @@
 
 **/
 
+
 #include "CS3113/LevelA.h"
-#include "CS3113/LevelB.h"
-#include "CS3113/LevelC.h"
 #include "CS3113/LoseScene.h"
 #include "CS3113/MenuScene.h"
 #include "CS3113/WinScene.h"
 
-constexpr int SCREEN_WIDTH = 1000,
-              SCREEN_HEIGHT = 600,
+constexpr int SCREEN_WIDTH = 1200,
+              SCREEN_HEIGHT = 800,
               FPS = 120;
 
 constexpr float FIXED_TIMESTEP = 1.0f / 60.0f;
@@ -65,15 +64,14 @@ void switchToScene(Scene *scene)
 
 void initialise()
 {
-    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Knight's Run");
+    InitWindow(SCREEN_WIDTH, SCREEN_HEIGHT, "Dreg Rush");
     InitAudioDevice();
+
     gGameProgress.hurtSound = LoadSound("assets/Misc. Sound/Hurt Sound.mp3");
 
     // Store each scene under its named ID
     gLevels[MAIN_MENU] = new MenuScene(ORIGIN, "#1b4998");
-    gLevels[LEVEL_A] = new LevelA(ORIGIN, "#C0897E");
-    gLevels[LEVEL_B] = new LevelB(ORIGIN, "#011627");
-    gLevels[LEVEL_C] = new LevelC(ORIGIN, "#10121F");
+    gLevels[LEVEL_1] = new LevelA(ORIGIN, "#C0897E");
     gLevels[LOSE_SCREEN] = new LoseScene(ORIGIN, "#A00000");
     gLevels[WIN_SCREEN] = new WinScene(ORIGIN, "#008000");
     switchToScene(gLevels[MAIN_MENU]);
@@ -100,15 +98,12 @@ void processInput()
 
     if (player != nullptr)
     {
-        // Number keys switch levels without resetting lives
+        // Number keys switch levels for debugging
+
         SceneID selectedLevel = NO_SCENE;
         if (IsKeyPressed(KEY_ONE))
-            selectedLevel = LEVEL_A;
-        else if (IsKeyPressed(KEY_TWO))
-            selectedLevel = LEVEL_B;
-        else if (IsKeyPressed(KEY_THREE))
-            selectedLevel = LEVEL_C;
-
+            selectedLevel = LEVEL_1;
+       
         if (selectedLevel != NO_SCENE)
         {
             switchToScene(gLevels[selectedLevel]);
@@ -121,12 +116,10 @@ void processInput()
             player->moveLeft();
         else if (IsKeyDown(KEY_D))
             player->moveRight();
-
-        if (IsKeyPressed(KEY_W) && player->isCollidingBottom())
-        {
-            player->jump();
-            PlaySound(gCurrentScene->getState().jumpSound);
-        }
+        else if (IsKeyDown(KEY_S))
+            player->moveDown();
+        else if (IsKeyDown(KEY_W))
+            player->moveUp();
 
         // Normalize diagonal input to keep its speed consistent
         if (GetLength(player->getMovement()) > 1.0f)
