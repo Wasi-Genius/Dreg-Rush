@@ -20,6 +20,11 @@ ifeq ($(wildcard CS3113/Map.cpp),CS3113/Map.cpp)
     SRCS += CS3113/Map.cpp
 endif
 
+# Add the ShaderProgram library if it exists
+ifeq ($(wildcard CS3113/ShaderProgram.cpp),CS3113/ShaderProgram.cpp)
+    SRCS += CS3113/ShaderProgram.cpp
+endif
+
 # Add the scene subclasses used by the lesson.
 # Include the Level1 implementation in the executable build
 ifeq ($(wildcard CS3113/Level1.cpp),CS3113/Level1.cpp)

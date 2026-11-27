@@ -13,8 +13,7 @@ Level1::~Level1()
     shutdown();
 }
 
-// Convert a 2D (row, column) grid position into a 1D row-major array index
-// Store a 1-based atlas tile ID (0 leaves the cell empty/transparent)
+// Convert a 2D (row, column) grid position into a 1D row-major array index and store a 1-based atlas tile ID (0 leaves the cell empty/transparent)
 void Level1::setTile(
     unsigned int *layerData,
     int row,
@@ -29,6 +28,15 @@ void Level1::setTile(
     }
 
     layerData[row * LEVEL_1_MAP_COLUMNS + column] = tileID;
+}
+
+// Convert a (row, column) tile coordinate into world-space center coordinates using the floor map's top-left boundary so entities align cleanly with tiles
+Vector2 Level1::getTileCenter(float row, float column) const
+{
+    return {
+        mGameState.map->getLeftBoundary() + (column + 0.5f) * LEVEL_1_TILE_SIZE,
+        mGameState.map->getTopBoundary() + (row + 0.5f) * LEVEL_1_TILE_SIZE
+    };
 }
 
 // Layer 1: Fill the entire background with grass, flowers, and a south stone path
@@ -47,7 +55,7 @@ void Level1::buildGrassData()
     {
         for (int column = 0; column < LEVEL_1_MAP_COLUMNS; column++)
         {
-            // Pseudo-random pattern based on (row, column) so grass looks organic
+            // Pseudo-random pattern based on (row, column) so the grass looks organic rather than repeating a rigid diagonal stripe
             const int patternHash =
                 (row * 37 + column * 17 + row * column * 7) % grassChoiceCount;
             setTile(mGrassData, row, column, grassChoices[patternHash]);
@@ -85,8 +93,7 @@ void Level1::buildFloorData()
 }
 
 // Layer 3: Place a raised 7x5 stone battle dais in the center of the arena.
-// Uses "TX Tileset Stone Ground.png" (8x8 atlas). Tiles 1..3, 9..11, and 17..19
-
+// Uses "TX Tileset Stone Ground.png" (8x8 atlas)
 void Level1::buildDaisData()
 {
     for (int i = 0; i < LEVEL_1_MAP_CELLS; i++)
@@ -118,15 +125,9 @@ void Level1::buildDaisData()
     }
 }
 
-// Layer 4: Enclose the arena with  top-down stone walls.
+// Layer 4: Enclose the arena with top-down stone walls
 // Uses "TX Tileset Wall.png" (512x512 px, 32x32 px per tile -> 16 columns x 16 rows).
-// Each wall edge has its own orientation tiles:
-//   - North wall is 2 rows tall (rows 1..2): caps 21..25 over brick faces 37..41
-//   - Grated wall windows: 103 (top) over 119 (bottom)
-//   - Left vertical rim: 53 (hugs the right edge of column 1)
-//   - Right vertical rim: 57 (hugs the left edge of column 17)
-//   - South horizontal rim: 69 (bottom-left), 71/72 (middle), 73 (bottom-right)
-
+// Because mWallMap is passed as the collision map to Entity::update, any nonzero tile here also acts as a solid wall barrier for the protagonist.
 void Level1::buildWallData()
 {
     for (int i = 0; i < LEVEL_1_MAP_CELLS; i++)
@@ -203,7 +204,7 @@ void Level1::buildPropsData()
     setTile(mPropsData, 7, 9, 173);
     setTile(mPropsData, 7, 10, 174);
 
-    // Two  3-tile-tall stone pillars in the back corners (columns 3 and 15)
+    // Two 3-tile-tall stone pillars in the back corners (columns 3 and 15)
     setTile(mPropsData, 3, 3, 92);
     setTile(mPropsData, 4, 3, 108);
     setTile(mPropsData, 5, 3, 124);
@@ -233,7 +234,7 @@ void Level1::buildPropsData()
     setTile(mPropsData, 10, 15, 245);
 }
 
-// Layer 6: Frame the outside of the arena with bushes and grass tufts.
+// Layer 6: Frame the outside of the arena with bushes and grass tufts
 // Uses "TX Plant.png" (512x512 px, 32x32 px per tile -> 16 columns x 16 rows)
 void Level1::buildPlantData()
 {
@@ -263,7 +264,96 @@ void Level1::buildPlantData()
     setTile(mPlantData, 11, 14, 195);
 }
 
-// Load and prepare all resources for the level
+// Configure the protagonist Entity with 4-way IDLE, RUN, and ATTACK 1 sprite sheets, top-down movement, foot-aligned collision, and fast-paced dodge settings
+void Level1::initProtagonist()
+{
+    // All protagonist sprite sheets are 768x80 px: 1 row of 8 frames (96x80 px each)
+    const std::vector<int> eightFrames = { 0, 1, 2, 3, 4, 5, 6, 7 };
+    const Vector2 sheetDimensions = { 1.0f, 8.0f };
+
+    const std::map<Direction, const char *> idlePaths = {
+        { UP,    "assets/Protagonist Sprites/IDLE/idle_up.png"    },
+        { DOWN,  "assets/Protagonist Sprites/IDLE/idle_down.png"  },
+        { LEFT,  "assets/Protagonist Sprites/IDLE/idle_left.png"  },
+        { RIGHT, "assets/Protagonist Sprites/IDLE/idle_right.png" }
+    };
+    const std::map<Direction, const char *> runPaths = {
+        { UP,    "assets/Protagonist Sprites/RUN/run_up.png"    },
+        { DOWN,  "assets/Protagonist Sprites/RUN/run_down.png"  },
+        { LEFT,  "assets/Protagonist Sprites/RUN/run_left.png"  },
+        { RIGHT, "assets/Protagonist Sprites/RUN/run_right.png" }
+    };
+    const std::map<Direction, const char *> attackPaths = {
+        { UP,    "assets/Protagonist Sprites/ATTACK 1/attack1_up.png"    },
+        { DOWN,  "assets/Protagonist Sprites/ATTACK 1/attack1_down.png"  },
+        { LEFT,  "assets/Protagonist Sprites/ATTACK 1/attack1_left.png"  },
+        { RIGHT, "assets/Protagonist Sprites/ATTACK 1/attack1_right.png" }
+    };
+
+    mGameState.player = new Entity();
+    mGameState.player->setEntityType(PLAYER);
+    mGameState.player->setTopDown(true);
+
+    // Scale 96x80 frames 2x (192x160) to match the 2x-scaled 64x64 arena tiles
+    mGameState.player->setScale({ 192.0f, 160.0f });
+
+    // Place the collision box over the protagonist's feet so hair/shoulders can overlap lower edges of walls and pillar tops naturally in top-down view
+    mGameState.player->setColliderDimensions({ 30.0f, 24.0f });
+    mGameState.player->setColliderOffset({ 0.0f, 22.0f });
+    mGameState.player->setSpeed(285);
+
+    mGameState.player->setDirectionalRunAnimations(
+        runPaths, sheetDimensions, eightFrames, 14
+    );
+    mGameState.player->setDirectionalIdleAnimations(
+        idlePaths, sheetDimensions, eightFrames, 8
+    );
+    mGameState.player->setDirectionalAttackAnimations(
+        attackPaths, sheetDimensions, eightFrames, 30
+    );
+
+    // Spawn just inside the south arena entrance facing UP toward the central altar
+    mGameState.player->setPosition(getTileCenter(9.4f, 9.0f));
+    mGameState.player->setDirection(UP);
+}
+
+// Create invisible solid collision boxes at pillar bases, lanterns, and the south gate so the protagonist cannot walk through stone props or off the bottom of the screen
+void Level1::initObstacles()
+{
+    // Back-left and back-right intact pillar bases (row 5, cols 3 and 15)
+    mObstacles[0].setEntityType(BLOCK);
+    mObstacles[0].setPosition(getTileCenter(5.0f, 3.0f));
+    mObstacles[0].setColliderDimensions({ 44.0f, 36.0f });
+
+    mObstacles[1].setEntityType(BLOCK);
+    mObstacles[1].setPosition(getTileCenter(5.0f, 15.0f));
+    mObstacles[1].setColliderDimensions({ 44.0f, 36.0f });
+
+    // Front-left and front-right ruined pillar bases (row 9, cols 3 and 15)
+    mObstacles[2].setEntityType(BLOCK);
+    mObstacles[2].setPosition(getTileCenter(9.0f, 3.0f));
+    mObstacles[2].setColliderDimensions({ 44.0f, 36.0f });
+
+    mObstacles[3].setEntityType(BLOCK);
+    mObstacles[3].setPosition(getTileCenter(9.0f, 15.0f));
+    mObstacles[3].setColliderDimensions({ 44.0f, 36.0f });
+
+    // South gate stone lantern bases (row 10, cols 7 and 11)
+    mObstacles[4].setEntityType(BLOCK);
+    mObstacles[4].setPosition(getTileCenter(10.0f, 7.0f));
+    mObstacles[4].setColliderDimensions({ 36.0f, 32.0f });
+
+    mObstacles[5].setEntityType(BLOCK);
+    mObstacles[5].setPosition(getTileCenter(10.0f, 11.0f));
+    mObstacles[5].setColliderDimensions({ 36.0f, 32.0f });
+
+    // Invisible barrier sealing the open south gate (row 11, cols 8..10) during combat
+    mObstacles[6].setEntityType(BLOCK);
+    mObstacles[6].setPosition(getTileCenter(11.1f, 9.0f));
+    mObstacles[6].setColliderDimensions({ 3.0f * LEVEL_1_TILE_SIZE, 36.0f });
+}
+
+// Load and prepare all resources owned by the first boss arena
 void Level1::initialise()
 {
     // Populate every layer's 1D tile array before constructing its Map object
@@ -342,7 +432,20 @@ void Level1::initialise()
         mOrigin
     );
 
-    // Load music
+    // Initialize solid prop/gate blockers and the protagonist
+    initObstacles();
+    initProtagonist();
+
+    // Load protagonist combat & movement sound effects owned by this scene
+    mAttackSound   = LoadSound("assets/Audio/Protag Attack.wav");
+    mDodgeSound    = LoadSound("assets/Audio/Protag Dodge.wav");
+    mFootstepSound = LoadSound("assets/Audio/Protag Footstep.wav");
+    mFootstepTimer = 0.0f;
+
+    // Load the dodge shader
+    mDodgeShader.load("assets/Shaders/dodge.vs", "assets/Shaders/dodge.fs");
+
+    // Load the level music
     mGameState.bgm = LoadMusicStream("assets/Music/Boss Music Level 1.mp3");
     // Set the music to half-volume
     SetMusicVolume(mGameState.bgm, 0.5f);
@@ -352,17 +455,82 @@ void Level1::initialise()
     mGameState.nextSceneID = NO_SCENE;
 }
 
-// Keep music playing during fixed-timestep updates
-void Level1::update(float)
+// Update music, protagonist movement/actions, and arena collisions each fixed step
+
+void Level1::update(float deltaTime)
 {
     UpdateMusicStream(mGameState.bgm);
+
+    if (mGameState.player == nullptr) return;
+
+    // Pass mWallMap (solid walls) and mObstacles (pillars/lanterns/gate) as colliders
+
+    // mGameState.map is the walkable floor so it is NOT passed for solid collision
+
+    mGameState.player->update(
+        deltaTime,
+        nullptr,
+        mWallMap,
+        mObstacles,
+        LEVEL_1_OBSTACLE_COUNT
+    );
+
+    // Play one-shot SFX when an attack or dodge started on input
+
+    if (mGameState.player->consumeAttackSoundPending())
+        PlaySound(mAttackSound);
+
+    if (mGameState.player->consumeDodgeSoundPending())
+        PlaySound(mDodgeSound);
+
+    // Play paced footstep sounds only while actively running (not dodging or swinging)
+
+    const bool isRunning =
+        !mGameState.player->isDodging() &&
+        !mGameState.player->isAttacking() &&
+        GetLength(mGameState.player->getMovement()) > 0.0f;
+
+    if (isRunning)
+    {
+        mFootstepTimer -= deltaTime;
+        if (mFootstepTimer <= 0.0f)
+        {
+            PlaySound(mFootstepSound);
+            mFootstepTimer = 0.25f;
+        }
+    }
+    else
+    {
+        mFootstepTimer = 0.0f;
+    }
 }
 
-// Draw every arena layer back-to-front so each layer sits cleanly on the one below
+// Draw every arena layer back-to-front, followed by the protagonist, using the dodge shader when the protagonist is dashing
+
 void Level1::render()
 {
     // Clear the screen to the scene's configured background color
     ClearBackground(ColorFromHex(mBGColourHexCode));
+
+    const bool hasPlayer = mGameState.player != nullptr;
+    const int isDodging = (hasPlayer && mGameState.player->isDodging()) ? 1 : 0;
+
+    if (mDodgeShader.isLoaded())
+    {
+        mDodgeShader.setInt("isDodging", isDodging);
+        if (hasPlayer)
+        {
+            mDodgeShader.setVector2("lightPosition",  mGameState.player->getPosition());
+            mDodgeShader.setVector2("dodgeOrigin",    mGameState.player->getDodgeOrigin());
+            mDodgeShader.setVector2("dodgeDirection", mGameState.player->getDodgeDirection());
+            mDodgeShader.setFloat("dodgeProgress",    mGameState.player->getDodgeProgress());
+        }
+
+        // Pass 1: Arena world layers (isPlayer = 0 -> focus-drain + shockwave ring)
+
+        mDodgeShader.setInt("isPlayer", 0);
+        mDodgeShader.begin();
+    }
 
     mGrassMap->render();      // 1. Grass & cobblestone entry path
     mGameState.map->render(); // 2. Stone courtyard floor
@@ -370,12 +538,41 @@ void Level1::render()
     mWallMap->render();       // 4. Enclosing brick & stone walls
     mPropsMap->render();      // 5. Rune altar, pillars, lanterns, and rubble
     mPlantMap->render();      // 6. Outer bushes and grass tufts
+
+    if (mDodgeShader.isLoaded())
+    {
+        // End shader mode to flush the arena draw batch before switching isPlayer = 1
+        mDodgeShader.end();
+
+        if (hasPlayer)
+        {
+            // Pass 2: Protagonist (isPlayer = 1 -> smear + phase-shift)
+
+            mDodgeShader.setInt("isPlayer", 1);
+            mDodgeShader.begin();
+            mGameState.player->render();
+            mDodgeShader.end();
+        }
+    }
+    else if (hasPlayer)
+    {
+        mGameState.player->render();
+    }
 }
 
-// Release resources owned by Level1 
+// Release all heap and Raylib resources owned by Level1
 void Level1::shutdown()
 {
-    // Delete every Map and clear its pointer so repeated shutdown() calls are safe
+    // Unload the GPU dodge shader safely
+    mDodgeShader.unload();
+
+    // Delete the protagonist and clear the pointer so repeated shutdown() calls are safe
+
+    delete mGameState.player;
+    mGameState.player = nullptr;
+
+    // Delete every Map and clear its pointer
+
     delete mPlantMap;
     mPlantMap = nullptr;
 
@@ -394,10 +591,17 @@ void Level1::shutdown()
     delete mGrassMap;
     mGrassMap = nullptr;
 
-    // Unload the music
+    // Unload sound effects and music
+
+    UnloadSound(mAttackSound);
+    mAttackSound = {};
+    UnloadSound(mDodgeSound);
+    mDodgeSound = {};
+    UnloadSound(mFootstepSound);
+    mFootstepSound = {};
+
     UnloadMusicStream(mGameState.bgm);
     mGameState.bgm = {};
-    
     // Clear any pending transition before leaving or restarting the scene
     mGameState.nextSceneID = NO_SCENE;
 }

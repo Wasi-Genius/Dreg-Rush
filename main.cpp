@@ -41,6 +41,32 @@ Camera2D gCamera = {};
 Scene *gCurrentScene = nullptr;
 std::map<SceneID, Scene *> gLevels;
 
+// Keep the camera centered on fixed-size boss arenas and clamped on larger maps
+Vector2 getBoundedCameraTarget(Scene *scene)
+{
+    if (scene == nullptr) return ORIGIN;
+
+    const Vector2 origin = scene->getOrigin();
+    Map *map = scene->getState().map;
+    if (map == nullptr) return origin;
+
+    const float mapWidth = map->getRightBoundary() - map->getLeftBoundary();
+    // Single-screen arenas (like Level 1's 1216 px arena in a 1200 px window)
+    // stay centered on the scene origin so the walls never slide off-screen
+    if (mapWidth <= SCREEN_WIDTH + 64.0f) return origin;
+
+    Entity *player = scene->getState().player;
+    if (player == nullptr) return origin;
+
+    float targetX = player->getPosition().x;
+    const float minX = map->getLeftBoundary() + ORIGIN.x;
+    const float maxX = map->getRightBoundary() - ORIGIN.x;
+    if (targetX < minX) targetX = minX;
+    if (targetX > maxX) targetX = maxX;
+
+    return { targetX, origin.y };
+}
+
 // Shut down the old scene before loading the new one
 void switchToScene(Scene *scene)
 {
@@ -56,10 +82,7 @@ void switchToScene(Scene *scene)
 
     gCurrentScene = scene;
     gCurrentScene->initialise();
-    Entity *player = gCurrentScene->getState().player;
-    gCamera.target = player != nullptr
-                         ? Vector2{player->getPosition().x, ORIGIN.y}
-                         : gCurrentScene->getOrigin();
+    gCamera.target = getBoundedCameraTarget(gCurrentScene);
 }
 
 void initialise()
@@ -112,20 +135,42 @@ void processInput()
             return;
         }
 
-        player->resetMovement();
+        if (player->isTopDown())
+        {
+            // Read horizontal and vertical axes independently so diagonal WASD movement works
+            Vector2 movementInput = { 0.0f, 0.0f };
+            if (IsKeyDown(KEY_A))      movementInput.x -= 1.0f;
+            if (IsKeyDown(KEY_D))      movementInput.x += 1.0f;
+            if (IsKeyDown(KEY_W))      movementInput.y -= 1.0f;
+            if (IsKeyDown(KEY_S))      movementInput.y += 1.0f;
 
-        if (IsKeyDown(KEY_A))
-            player->moveLeft();
-        else if (IsKeyDown(KEY_D))
-            player->moveRight();
-        else if (IsKeyDown(KEY_S))
-            player->moveDown();
-        else if (IsKeyDown(KEY_W))
-            player->moveUp();
+            // Update movement only when not mid-dodge (setTopDownMovement guards mIsDodging)
+            player->setTopDownMovement(movementInput);
 
-        // Normalize diagonal input to keep its speed consistent
-        if (GetLength(player->getMovement()) > 1.0f)
-            player->normaliseMovement();
+            // SPACE triggers the fast-paced phantom dodge; J triggers melee attack
+            // (startAttack rejects input automatically while dodging)
+            if (IsKeyPressed(KEY_SPACE))
+                player->startDodge(movementInput);
+            else if (IsKeyPressed(KEY_J))
+                player->startAttack();
+        }
+        else
+        {
+            player->resetMovement();
+
+            if (IsKeyDown(KEY_A))
+                player->moveLeft();
+            else if (IsKeyDown(KEY_D))
+                player->moveRight();
+            else if (IsKeyDown(KEY_S))
+                player->moveDown();
+            else if (IsKeyDown(KEY_W))
+                player->moveUp();
+
+            // Normalize diagonal input to keep its speed consistent
+            if (GetLength(player->getMovement()) > 1.0f)
+                player->normaliseMovement();
+        }
     }
     else if (IsKeyPressed(KEY_ENTER))
     {
@@ -147,13 +192,7 @@ void update()
         gCurrentScene->update(FIXED_TIMESTEP);
         deltaTime -= FIXED_TIMESTEP;
 
-        Entity *player = gCurrentScene->getState().player;
-        if (player != nullptr)
-        {
-            gCamera.target = {
-                player->getPosition().x,
-                ORIGIN.y};
-        }
+        gCamera.target = getBoundedCameraTarget(gCurrentScene);
     }
 
     gTimeAccumulator = deltaTime;

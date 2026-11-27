@@ -3,7 +3,7 @@
 
 #include "Map.h"
 
-enum Direction    { LEFT, UP, RIGHT, DOWN              }; // Movement directions
+enum Direction    { LEFT, UP, RIGHT, DOWN              }; 
 enum EntityStatus { ACTIVE, INACTIVE                   };
 enum EntityType   { PLAYER, BLOCK, PLATFORM, NPC, NONE };
 enum AIType       { WANDERER, FOLLOWER, FLYER          };
@@ -23,13 +23,26 @@ private:
     Vector2 mColliderOffset{ 0.0f, 0.0f };
 
     // Sprite textures and animation data
-    Texture2D   mTexture;
+    Texture2D   mTexture{};
     Texture2D   mIdleTexture{};
     Texture2D   mTurnAroundTexture{};
     TextureType mTextureType;
     Vector2     mSpriteSheetDimensions;
     Vector2     mIdleSpriteSheetDimensions{};
     Vector2     mTurnAroundSpriteSheetDimensions{};
+
+    // Directional 4-way sprite sheets used by top-down characters 
+    // (e.g. idle_up, idle_down, idle_left, idle_right) 
+    // Each Direction maps to its own Texture2D
+    std::map<Direction, Texture2D> mDirectionalRunTextures;
+    std::map<Direction, Texture2D> mDirectionalIdleTextures;
+    std::map<Direction, Texture2D> mDirectionalAttackTextures;
+    bool    mUseDirectionalSheets = false;
+    Vector2 mAttackSpriteSheetDimensions{};
+    std::vector<int> mAttackAnimationFrames;
+
+    // Fast melee swing (~0.28s for 8 frames)
+    int     mAttackFrameSpeed = 28; 
 
     std::map<Direction, std::vector<int>> mAnimationAtlas;
     std::vector<int>                      mAnimationIndices;
@@ -41,15 +54,39 @@ private:
     int   mCurrentFrameIndex = 0;
     int   mIdleAnimationFrame = 0;
     int   mTurnAroundFrameIndex = 0;
+    int   mAttackFrameIndex = 0;
     float mAnimationTime     = 0.0f;
     float mIdleAnimationTime = 0.0f;
     float mTurnAroundAnimationTime = 0.0f;
+    float mAttackAnimationTime = 0.0f;
 
-    bool  mIsJumping    = false;
+    bool  mIsTopDown       = false; 
     bool  mIsIdleAnimating = false;
     bool  mIsTurningAround = false;
+    bool  mIsAttacking     = false;
     bool  mFlipWithDirection = false;
     float mJumpingPower = 0.0f;
+
+    // Fast-paced dodge-dash:
+    // While mIsDodging is true:
+    //   1. The player moves rapidly in the locked mDodgeDirection
+    //   2. Player movement input cannot stop or redirect the dash mid-flight
+    //   3. Player attacks are locked out until the dash finishes
+    //   4. isInvulnerable() returns true so incoming damage is negated
+    //   5. Level1 passes dodge state to dodge.fs so the GPU renders the effect
+
+    bool    mIsDodging          = false;
+    Vector2 mDodgeOrigin        { 0.0f, 0.0f };
+    Vector2 mDodgeDirection     { 0.0f, 0.0f };
+    float   mDodgeTimer         = 0.0f;
+    float   mDodgeDuration      = 0.18f;  // Quick burst (~0.18s across ~3.4 tiles)
+    float   mDodgePeakSpeed     = 1650.0f;
+    float   mDodgeCooldownTimer = 0.0f;
+    float   mDodgeCooldown      = 0.18f;  // Brief recovery before next dodge
+
+    // Audio flags consumed by the owning Scene so audio stays scene-owned
+    bool mAttackSoundPending = false;
+    bool mDodgeSoundPending  = false;
 
     int   mSpeed;
     int   mIdleFrameSpeed = 8;
@@ -86,6 +123,8 @@ private:
     void animate(float deltaTime);
     void animateIdle(float deltaTime);
     void animateTurnAround(float deltaTime);
+    void animateAttack(float deltaTime);
+    void updateDodge(float deltaTime);
     void startTurnAround();
     void AIActivate(Entity *target);
     void AIWander();
@@ -126,18 +165,47 @@ public:
     void render();
     void normaliseMovement() { Normalise(&mMovement); }
 
-    void jump()       { mIsJumping = true;         }
+    // Top-down combat & dodge triggers (return true if the action started)
+    bool startAttack();
+    bool startDodge(Vector2 inputDirection);
+    void setTopDown(bool isTopDown) { mIsTopDown = isTopDown; }
+
+    // Consume sound requests from the owning update loop
+    bool consumeAttackSoundPending();
+    bool consumeDodgeSoundPending();
+
     void activate()   { mEntityStatus = ACTIVE;    }
     void deactivate() { mEntityStatus = INACTIVE;  }
     void displayCollider();
 
-    bool isActive() { return mEntityStatus == ACTIVE; }
+    bool isActive()       const { return mEntityStatus == ACTIVE; }
+    bool isDodging()      const { return mIsDodging;              }
+    bool isAttacking()    const { return mIsAttacking;            }
+
+    // Damage negation during a dodge: boss/projectile hits check this
+    bool isInvulnerable() const { return mIsDodging;              }
+    bool isTopDown()      const { return mIsTopDown;              }
     bool collidesWith(Entity *other) const { return isColliding(other); }
+
+    // Dodge state getters uploaded as GLSL uniforms by the active Scene
+    Vector2 getDodgeOrigin()    const { return mDodgeOrigin;    }
+    Vector2 getDodgeDirection() const { return mDodgeDirection; }
+    float   getDodgeProgress()  const
+    {
+        return mDodgeDuration > 0.0f ? (mDodgeTimer / mDodgeDuration) : 0.0f;
+    }
+
+    // Active melee strike window & hitbox for boss damage checks
+    bool      isAttackHitActive() const;
+    Rectangle getAttackHitbox()   const;
 
     void moveUp()    { mMovement.y = -1; mDirection = UP;    }
     void moveDown()  { mMovement.y =  1; mDirection = DOWN;  }
     void moveLeft()  { mMovement.x = -1; setDirection(LEFT);  }
     void moveRight() { mMovement.x =  1; setDirection(RIGHT); }
+
+    // Update horizontal/vertical input independently while facing the axis
+    void setTopDownMovement(Vector2 movement);
 
     void resetMovement() { mMovement = { 0.0f, 0.0f }; }
 
@@ -162,7 +230,6 @@ public:
     Direction   getDirection()             const { return mDirection;             }
     int         getFrameSpeed()            const { return mFrameSpeed;            }
     float       getJumpingPower()          const { return mJumpingPower;          }
-    bool        isJumping()                const { return mIsJumping;             }
     int         getSpeed()                 const { return mSpeed;                 }
     float       getAngle()                 const { return mAngle;                 }
     EntityType  getEntityType()            const { return mEntityType;            }
@@ -197,6 +264,27 @@ public:
         std::vector<int> animationFrames,
         int frameSpeed = 8
     );
+
+    // Load separate UP/DOWN/LEFT/RIGHT sprite sheets
+    void setDirectionalRunAnimations(
+        const std::map<Direction, const char *> &texturePaths,
+        Vector2 spriteSheetDimensions,
+        const std::vector<int> &animationFrames,
+        int frameSpeed = 14
+    );
+    void setDirectionalIdleAnimations(
+        const std::map<Direction, const char *> &texturePaths,
+        Vector2 spriteSheetDimensions,
+        const std::vector<int> &animationFrames,
+        int frameSpeed = 8
+    );
+    void setDirectionalAttackAnimations(
+        const std::map<Direction, const char *> &texturePaths,
+        Vector2 spriteSheetDimensions,
+        const std::vector<int> &animationFrames,
+        int frameSpeed = 28
+    );
+
     void setColliderDimensions(Vector2 newDimensions)
         { mColliderDimensions = newDimensions;     }
     void setColliderOffset(Vector2 newOffset)
@@ -226,8 +314,11 @@ public:
 
         mDirection = newDirection;
 
-        if (mTextureType == ATLAS)
+        if (mTextureType == ATLAS && !mUseDirectionalSheets &&
+            mAnimationAtlas.find(mDirection) != mAnimationAtlas.end())
+        {
             mAnimationIndices = mAnimationAtlas.at(mDirection);
+        }
     }
 };
 
